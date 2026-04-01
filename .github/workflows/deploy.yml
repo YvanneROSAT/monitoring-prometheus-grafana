@@ -1,0 +1,46 @@
+name: Build and Deploy Webapp
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t webapp-yvanne:latest ./app
+
+      - name: Stop existing container (if any)
+        run: docker stop webapp-yvanne 2>/dev/null || true && docker rm webapp-yvanne 2>/dev/null || true
+
+      - name: Run container
+        run: docker run -d --name webapp-yvanne -p 8082:80 webapp-yvanne:latest
+
+      - name: Wait for container to be ready
+        run: sleep 3
+
+      - name: Verify site is running
+        run: |
+          curl -s http://localhost:8082 | grep -q "Yvanne le meilleur dev"
+          echo "Site is running and serving correct content"
+
+      - name: Output server IP
+        run: |
+          echo "==================================="
+          echo "Site deployed successfully!"
+          echo "==================================="
+          echo ""
+          echo "Container IP (internal):"
+          docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' webapp-yvanne
+          echo ""
+          echo "Server hostname: $(hostname)"
+          echo "Server IP: $(hostname -I | awk '{print $1}')"
+          echo ""
+          echo "Site accessible at: http://$(hostname -I | awk '{print $1}'):8082"
+          echo "==================================="

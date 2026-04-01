@@ -1,0 +1,37 @@
+# Configuration globale de Prometheus
+global:
+  scrape_interval: 15s        # Frequence de collecte des metriques
+  evaluation_interval: 15s    # Frequence d'evaluation des regles d'alerte
+  scrape_timeout: 10s         # Timeout pour chaque scrape
+
+# ============================================
+# SCRAPE CONFIGS - Definition des cibles a monitorer
+# ============================================
+scrape_configs:
+  # Job 1 : Prometheus se monitore lui-meme
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["prometheus:9090"]
+        labels:
+          instance: "prometheus-server"
+
+  # Job 2 : Node Exporter - metriques systeme
+  - job_name: "node-exporter"
+    static_configs:
+      - targets: ["node-exporter:9100"]
+        labels:
+          instance: "docker-host"
+
+  # Job 3 : cAdvisor - metriques des conteneurs Docker
+  - job_name: "cadvisor"
+    static_configs:
+      - targets: ["cadvisor:8080"]
+        labels:
+          instance: "docker-containers"
+
+  # Job 4 : MySQL Exporter - metriques de la base de donnees WordPress
+  - job_name: "mysql-exporter"
+    static_configs:
+      - targets: ["mysql-exporter:9104"]
+        labels:
+          instance: "wordpress-db"

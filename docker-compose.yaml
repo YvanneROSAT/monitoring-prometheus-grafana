@@ -1,0 +1,174 @@
+services:
+  # ============================================
+  # WEBAPP - Site custom nginx "Yvanne le meilleur dev"
+  # ============================================
+  webapp:
+    build:
+      context: ./app
+      dockerfile: Dockerfile
+    container_name: webapp
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    networks:
+      - monitoring
+
+  # ============================================
+  # WORDPRESS - Application web a monitorer
+  # ============================================
+  wordpress:
+    image: wordpress:6.5-apache
+    container_name: wordpress
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      WORDPRESS_DB_HOST: mysql:3306
+      WORDPRESS_DB_NAME: wordpress
+      WORDPRESS_DB_USER: wp_user
+      WORDPRESS_DB_PASSWORD: wp_password
+    volumes:
+      - wordpress_data:/var/www/html
+    depends_on:
+      - mysql
+    networks:
+      - monitoring
+
+  # ============================================
+  # MYSQL - Base de donnees pour WordPress
+  # ============================================
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wp_user
+      MYSQL_PASSWORD: wp_password
+      MYSQL_ROOT_PASSWORD: root_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - monitoring
+
+  # ============================================
+  # MYSQL EXPORTER - Metriques de la base de donnees
+  # ============================================
+  mysql-exporter:
+    image: prom/mysqld-exporter:v0.15.1
+    container_name: mysql-exporter
+    restart: unless-stopped
+    ports:
+      - "9104:9104"
+    volumes:
+      - ./mysql-exporter/.my.cnf:/.my.cnf:ro
+    depends_on:
+      - mysql
+    networks:
+      - monitoring
+
+  # ============================================
+  # CADVISOR - Metriques des conteneurs (CPU, RAM, reseau par conteneur)
+  # ============================================
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - monitoring
+
+  # ============================================
+  # PROMETHEUS - Collecte et stockage des metriques
+  # ============================================
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.console.libraries=/etc/prometheus/console_libraries"
+      - "--web.console.templates=/etc/prometheus/consoles"
+      - "--web.enable-lifecycle"
+    depends_on:
+      - node-exporter
+      - cadvisor
+      - mysql-exporter
+    networks:
+      - monitoring
+
+  # ============================================
+  # GRAFANA - Visualisation et dashboards
+  # ============================================
+  grafana:
+    image: grafana/grafana:11.0.0
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - monitoring
+
+  # ============================================
+  # NODE EXPORTER - Metriques systeme (CPU, RAM, disque, reseau)
+  # ============================================
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/rootfs"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+    networks:
+      - monitoring
+
+# ============================================
+# VOLUMES PERSISTANTS
+# ============================================
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  wordpress_data:
+    driver: local
+  mysql_data:
+    driver: local
+
+# ============================================
+# RESEAU DEDIE AU MONITORING
+# ============================================
+networks:
+  monitoring:
+    driver: bridge
